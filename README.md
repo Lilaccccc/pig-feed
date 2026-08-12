@@ -32,7 +32,6 @@
 | 语言        | Scala                   | 3.8.4        |
 | HTTP 框架   | Pekko HTTP + Tapir      | 1.13.23      |
 | JSON 序列化 | Circe                   | (Tapir 集成) |
-| 函数式编程  | Kyo                     | 1.0.0-RC4    |
 | 数据库      | MySQL                   | 8.0+         |
 | JDBC 连接池 | HikariCP                | 7.1.0        |
 | ORM         | sqala-jdbc              | 0.7.5        |
