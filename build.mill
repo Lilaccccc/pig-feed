@@ -1,0 +1,59 @@
+//| mill-version: 1.1.7
+//| mill-jvm-version: system
+package build
+
+import mill.*
+import mill.javalib.PublishModule
+import mill.javalib.publish.*
+import mill.scalalib.*
+import millbuild.*
+
+object `package` extends SbtModule, PublishModule {
+
+  def mvnDeps = Seq(
+    Deps.scalaParallelCollections,
+    Deps.chimney,
+    Deps.jedis,
+    Deps.commonsCodec,
+    Deps.guava,
+    Deps.tapirPekkoHttpServer,
+    Deps.tapirJsonCirce,
+    Deps.pekkoHttpCors,
+    Deps.kyoPrelude,
+    Deps.logbackClassic,
+    Deps.scalaLogging,
+    Deps.sqalaJdbc_3,
+    Deps.HikariCP,
+    Deps.mysqlConnectorJ,
+    Deps.flywayMysql,
+    Deps.jbcrypt,
+    Deps.jwtCore,
+    Deps.amqpClient
+  )
+
+  def scalaVersion = "3.8.4"
+
+  def artifactName = "feed-scala"
+
+  def pomSettings = PomSettings(
+    "feed-scala",
+    "feed-scala",
+    "",
+    Seq(),
+    VersionControl(None, None, None, None),
+    Seq()
+  )
+
+  def publishVersion = "0.1.0-SNAPSHOT"
+
+  object test extends SbtTests {
+
+    def testParallelism = false
+
+    def testSandboxWorkingDir = false
+
+    def testFramework = sys.error("no test framework")
+
+  }
+
+}

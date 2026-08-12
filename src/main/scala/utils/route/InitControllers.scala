@@ -1,0 +1,94 @@
+package utils.route
+
+import scala.annotation.tailrec
+import scala.quoted.*
+
+// 宏定义：编译时分析特定特质并创建所有实现类的实例
+inline def initControllers[T]: List[T] = ${ initControllersImpl[T] }
+
+def initControllersImpl[T: Type](using Quotes): Expr[List[T]] = {
+  import quotes.reflect.*
+
+  // 获取目标特质的符号
+  val traitSymbol = TypeRepr.of[T].typeSymbol
+
+  // 验证传入的类型确实是特质
+  if !traitSymbol.flags.is(Flags.Trait) then
+    // report：用于在编译时打印信息，可以使用 VSCode + Metals 查看
+    report.errorAndAbort(s"${traitSymbol.name} is not a trait.")
+
+  // 递归收集符号树，返回所有相关符号的列表
+  // sym：当前符号
+  // visited：已访问的符号集合（防止循环引用）
+  def collect(
+    sym: Symbol,
+    visited: Set[String] = Set.empty
+  ): List[Symbol] =
+    // 终止条件：无效符号或已访问过的符号
+    if sym.isNoSymbol || visited.contains(sym.fullName) then Nil
+    else {
+      // 过滤子符号：只处理包、类和类型定义，排除系统包，避免深度遍历系统符号
+      val children = sym.declarations.filter { child =>
+        (child.isPackageDef && (
+          !sym.fullName.equals("scala") &&
+            !sym.fullName.startsWith("scala") &&
+            !sym.fullName.startsWith("java.") &&
+            !sym.fullName.startsWith("dotty.")
+        )) || child.isClassDef || child.isTypeDef
+      }
+      // 递归收集：当前符号 + 所有符合条件的子符号
+      sym +: children.flatMap { child =>
+        collect(child, visited + sym.fullName)
+      }
+    }
+
+  // 查找根级符号所有者（编译单元的顶级作用域），返回根级符号（包或文件对象）
+  // sym：当前符号
+  @tailrec
+  def findRootOwner(sym: Symbol): Symbol =
+    if sym.isPackageDef || sym.owner.isNoSymbol then sym
+    else findRootOwner(sym.owner)
+
+  // 检查类是否实现了目标特质，如果类实现了特质则返回 true，否则返回 false
+  // classSymbol：类符号
+  // traitSymbol：特质符号
+  def implementsTrait(classSymbol: Symbol, traitSymbol: Symbol): Boolean =
+    try {
+      val classType = classSymbol.typeRef
+      val traitType = traitSymbol.typeRef
+      // 类型检查：类类型是否是特质类型的子类型
+      classType <:< traitType
+    } catch case _: Exception => false // 类型检查失败视为不实现
+
+  // 收集所有符号 -> 去重 -> 过滤出符合条件的实现类
+  val allSymbols = collect(findRootOwner(Symbol.spliceOwner)).distinct.collect {
+    case classSymbol
+        if classSymbol.isClassDef               // 必须是类定义
+          && !classSymbol.flags.is(Flags.Trait) // 不能是特质本身
+          && classSymbol != traitSymbol         // 排除目标特质
+          && !classSymbol.name.startsWith("<")  // 排除编译器生成的符号（<none>, <init>等）
+          && classSymbol.name.nonEmpty          // 确保名称不为空
+          && implementsTrait(classSymbol, traitSymbol) => // 必须实现目标特质
+      classSymbol
+  }
+
+  // 生成创建实例的代码列表
+  val instances = allSymbols.map { cls =>
+    // 生成 new ClassName() 的表达式
+    New(TypeIdent(cls))
+      .select(cls.primaryConstructor) // 使用 cls.primaryConstructor 来获取类的构造函数
+      .appliedToNone                  // 无参数构造函数调用
+      .asExprOf[T]                    // 转换为目标类型的表达式
+  }
+
+  // 打印特质的详细信息与找到的类（调试用）
+  val info = s"""Class: ${traitSymbol.name}
+                |Full name: ${traitSymbol.fullName}
+                |Is trait: ${traitSymbol.flags.is(Flags.Trait)}
+                |Methods: ${traitSymbol.declaredMethods.map(_.name).mkString(", ")}
+                |Found controllers: ${allSymbols.map(_.fullName).mkString(", ")}""".stripMargin
+//  report.info(info)
+
+  // 生成：List(new A(), new B(), new C())
+  Expr.ofList(instances)
+}
